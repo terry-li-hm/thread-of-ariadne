@@ -11,6 +11,9 @@ interface ThreadOfAriadneSettings {
 	cacheExpiration: number;
 	useGeminiEmbeddings: boolean;
 	encryptedApiKey?: string; // Optional field for encrypted API key
+	rateLimitPerMinute?: number; // Optional rate limit for API calls
+	lastApiCallTime?: number; // Track when we last made an API call
+	apiCallsInLastMinute?: number; // Track how many calls we've made recently
 }
 
 const DEFAULT_SETTINGS: ThreadOfAriadneSettings = {
@@ -19,7 +22,10 @@ const DEFAULT_SETTINGS: ThreadOfAriadneSettings = {
 	minSimilarityScore: 0.7,
 	ignoreFolders: [],
 	cacheExpiration: 7, // days
-	useGeminiEmbeddings: false
+	useGeminiEmbeddings: false,
+	rateLimitPerMinute: 30, // Default to 30 calls per minute
+	lastApiCallTime: 0,
+	apiCallsInLastMinute: 0
 }
 
 interface EmbeddingCacheItem {
@@ -263,7 +269,33 @@ export default class ThreadOfAriadne extends Plugin {
 				return await this.getGeminiEmbedding(text);
 			} catch (error) {
 				console.error('Failed to get Gemini embedding:', error);
-				new Notice('Thread of Ariadne: Failed to get Gemini embedding. Falling back to local method.');
+				
+				// Provide more specific error message based on the error type
+				let errorMessage = 'Failed to get Gemini embedding. Falling back to local method.';
+				
+				// Check if it's a quota/rate limit issue
+				const errorStr = String(error);
+				if (errorStr.includes('RESOURCE_EXHAUSTED') || errorStr.includes('quota') || 
+					errorStr.includes('rate limit') || errorStr.includes('429')) {
+					errorMessage = 'Gemini API quota exhausted. Falling back to local method. Try again later or reduce usage.';
+					
+					// Temporarily disable Gemini embeddings to prevent more failed API calls
+					this.settings.useGeminiEmbeddings = false;
+					
+					// Show a more detailed notification
+					new Notice(
+						'Thread of Ariadne: Gemini API quota exhausted. ' +
+						'Temporarily switched to local embeddings. ' +
+						'Re-enable Gemini in settings when quota resets.',
+						10000 // Show for 10 seconds
+					);
+					
+					// Save the setting change
+					await this.saveSettings();
+				} else {
+					new Notice('Thread of Ariadne: ' + errorMessage);
+				}
+				
 				// Fall back to local method if API call fails
 				return this.getLocalEmbedding(text);
 			}
@@ -273,12 +305,53 @@ export default class ThreadOfAriadne extends Plugin {
 		}
 	}
 
+	// Check and enforce rate limits for API calls
+	private async checkRateLimit(): Promise<void> {
+		const now = Date.now();
+		
+		// Reset counter if more than a minute has passed
+		if (now - (this.settings.lastApiCallTime || 0) > 60000) {
+			this.settings.apiCallsInLastMinute = 0;
+			this.settings.lastApiCallTime = now;
+		}
+		
+		// Track this call
+		this.settings.apiCallsInLastMinute = (this.settings.apiCallsInLastMinute || 0) + 1;
+		this.settings.lastApiCallTime = now;
+		
+		// Check if we're over the rate limit
+		if ((this.settings.apiCallsInLastMinute || 0) > (this.settings.rateLimitPerMinute || 30)) {
+			// Wait until the end of the current minute before proceeding
+			const waitTimeNeeded = 60000 - (now - (this.settings.lastApiCallTime || 0) - 60000);
+			
+			if (waitTimeNeeded > 0) {
+				console.log(`Rate limit reached. Waiting ${Math.ceil(waitTimeNeeded/1000)} seconds...`);
+				
+				// Show a notice to the user
+				new Notice(`Thread of Ariadne: Rate limit reached. Waiting ${Math.ceil(waitTimeNeeded/1000)} seconds to avoid quota exhaustion.`, 5000);
+				
+				// Wait for the required time
+				await new Promise(resolve => setTimeout(resolve, waitTimeNeeded));
+				
+				// Reset the counter after waiting
+				this.settings.apiCallsInLastMinute = 1;
+				this.settings.lastApiCallTime = Date.now();
+			}
+		}
+		
+		// Save updated settings
+		await this.saveSettings();
+	}
+
 	// Get embeddings using the Gemini API
 	async getGeminiEmbedding(text: string): Promise<number[]> {
+		// Apply rate limiting to avoid quota exhaustion
+		await this.checkRateLimit();
+		
 		// Detect if the text contains significant amounts of non-Latin script
 		// This will help ensure the API understands the content is multilingual
 		const hasSignificantNonLatin = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]{5,}/.test(text);
-
+		
 		// For non-Latin text, we'll add a note to help the model process it correctly
 		if (hasSignificantNonLatin) {
 			console.log('Detected significant non-Latin content, optimizing for multilingual embedding');
@@ -295,11 +368,11 @@ export default class ThreadOfAriadne extends Plugin {
 		const requestBody = {
 			content: {
 				parts: [
-					{
-						text: hasSignificantNonLatin ?
+					{ 
+						text: hasSignificantNonLatin ? 
 							// For non-Latin text, we add a hint to improve multilingual processing
-							`Content for multilingual semantic embedding: ${text}` :
-							text
+							`Content for multilingual semantic embedding: ${text}` : 
+							text 
 					}
 				]
 			}
@@ -359,31 +432,31 @@ export default class ThreadOfAriadne extends Plugin {
 		// Extract both Latin-script words and CJK (Chinese, Japanese, Korean) characters
 		// First, match Latin-script words
 		const latinWords = text.toLowerCase().match(/[a-z0-9]+/g) || [];
-
+		
 		// Then match CJK characters (Chinese, Japanese, Korean)
-		// Unicode ranges:
+		// Unicode ranges: 
 		// - Chinese: \u4E00-\u9FFF (CJK Unified Ideographs)
 		// - Japanese additional: \u3040-\u309F (Hiragana), \u30A0-\u30FF (Katakana)
 		// - Korean: \uAC00-\uD7AF (Hangul)
 		const cjkChars = text.match(/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/g) || [];
-
+		
 		// Combine both for a unified approach
 		const tokens = [...latinWords, ...cjkChars];
 		const tokenFreq: Record<string, number> = {};
-
+		
 		// Count token frequencies
 		for (const token of tokens) {
 			tokenFreq[token] = (tokenFreq[token] || 0) + 1;
 		}
-
+		
 		// Create a simple 200-dimensional vector (increased from 100 for better resolution)
 		// We use separate sections for Latin and CJK content
 		const vector = new Array(200).fill(0);
-
+		
 		for (const token of Object.keys(tokenFreq)) {
 			// Determine if this is a CJK character
 			const isCJK = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/.test(token);
-
+			
 			// Use different hash spaces for different scripts
 			// This helps create some meaningful clustering
 			let hash;
@@ -394,14 +467,14 @@ export default class ThreadOfAriadne extends Plugin {
 				// Use the first half for Latin script
 				hash = this.simpleHash(token) % 100;
 			}
-
+			
 			vector[hash] += tokenFreq[token];
 		}
-
+		
 		// For better cross-language detection, add some overlap between scripts
 		// by calculating semantic hash overlaps
 		this.addCrossLanguageFeatures(vector, tokenFreq);
-
+		
 		// Normalize the vector
 		const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
 		if (magnitude > 0) {
@@ -409,7 +482,7 @@ export default class ThreadOfAriadne extends Plugin {
 				vector[i] /= magnitude;
 			}
 		}
-
+		
 		return vector;
 	}
 	
@@ -460,7 +533,7 @@ export default class ThreadOfAriadne extends Plugin {
 			'idea': ['想法', '主意', '概念'],
 			'information': ['信息', '资讯']
 		};
-
+		
 		// Map of Chinese tokens to English equivalents (reverse of above)
 		const chineseToEnglish: Record<string, string[]> = {};
 		for (const [eng, zhArr] of Object.entries(commonConcepts)) {
@@ -471,11 +544,11 @@ export default class ThreadOfAriadne extends Plugin {
 				chineseToEnglish[zh].push(eng);
 			}
 		}
-
+		
 		// For each token in the document, check if it has a cross-language equivalent
 		for (const token of Object.keys(tokenFreq)) {
 			const isChinese = /[\u4E00-\u9FFF]/.test(token);
-
+			
 			if (isChinese && chineseToEnglish[token]) {
 				// Chinese token with English equivalents
 				for (const engEquiv of chineseToEnglish[token]) {
@@ -802,6 +875,19 @@ class ThreadOfAriadneSettingTab extends PluginSettingTab {
 			text: 'Google AI Studio',
 			href: 'https://makersuite.google.com/app/apikey'
 		}).setAttribute('target', '_blank');
+		
+		// API rate limit setting
+		new Setting(containerEl)
+			.setName('API Rate Limit')
+			.setDesc('Maximum Gemini API calls per minute (to avoid quota exhaustion)')
+			.addSlider(slider => slider
+				.setLimits(10, 100, 5)
+				.setValue(this.plugin.settings.rateLimitPerMinute || 30)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.rateLimitPerMinute = value;
+					await this.plugin.saveSettings();
+				}));
 
 		containerEl.createEl('h3', { text: 'Similarity Settings' });
 
