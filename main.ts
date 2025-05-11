@@ -275,6 +275,14 @@ export default class ThreadOfAriadne extends Plugin {
 
 	// Get embeddings using the Gemini API
 	async getGeminiEmbedding(text: string): Promise<number[]> {
+		// Detect if the text contains significant amounts of non-Latin script
+		// This will help ensure the API understands the content is multilingual
+		const hasSignificantNonLatin = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]{5,}/.test(text);
+
+		// For non-Latin text, we'll add a note to help the model process it correctly
+		if (hasSignificantNonLatin) {
+			console.log('Detected significant non-Latin content, optimizing for multilingual embedding');
+		}
 		const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-exp-03-07:embedContent";
 		
 		// Validate API key
@@ -287,7 +295,12 @@ export default class ThreadOfAriadne extends Plugin {
 		const requestBody = {
 			content: {
 				parts: [
-					{ text: text }
+					{
+						text: hasSignificantNonLatin ?
+							// For non-Latin text, we add a hint to improve multilingual processing
+							`Content for multilingual semantic embedding: ${text}` :
+							text
+					}
 				]
 			}
 		};
@@ -341,24 +354,54 @@ export default class ThreadOfAriadne extends Plugin {
 		}
 	}
 
-	// Simplified local embedding implementation
+	// Improved local embedding implementation with better multilingual support
 	getLocalEmbedding(text: string): number[] {
-		// Create a simplified vector based on word frequency (just for demo purposes)
-		const words = text.toLowerCase().match(/\w+/g) || [];
-		const wordFreq: Record<string, number> = {};
-		
-		// Count word frequencies
-		for (const word of words) {
-			wordFreq[word] = (wordFreq[word] || 0) + 1;
+		// Extract both Latin-script words and CJK (Chinese, Japanese, Korean) characters
+		// First, match Latin-script words
+		const latinWords = text.toLowerCase().match(/[a-z0-9]+/g) || [];
+
+		// Then match CJK characters (Chinese, Japanese, Korean)
+		// Unicode ranges:
+		// - Chinese: \u4E00-\u9FFF (CJK Unified Ideographs)
+		// - Japanese additional: \u3040-\u309F (Hiragana), \u30A0-\u30FF (Katakana)
+		// - Korean: \uAC00-\uD7AF (Hangul)
+		const cjkChars = text.match(/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/g) || [];
+
+		// Combine both for a unified approach
+		const tokens = [...latinWords, ...cjkChars];
+		const tokenFreq: Record<string, number> = {};
+
+		// Count token frequencies
+		for (const token of tokens) {
+			tokenFreq[token] = (tokenFreq[token] || 0) + 1;
 		}
-		
-		// Create a simple 100-dimensional vector (just use word hashes)
-		const vector = new Array(100).fill(0);
-		for (const word of Object.keys(wordFreq)) {
-			const hash = this.simpleHash(word) % 100;
-			vector[hash] += wordFreq[word];
+
+		// Create a simple 200-dimensional vector (increased from 100 for better resolution)
+		// We use separate sections for Latin and CJK content
+		const vector = new Array(200).fill(0);
+
+		for (const token of Object.keys(tokenFreq)) {
+			// Determine if this is a CJK character
+			const isCJK = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/.test(token);
+
+			// Use different hash spaces for different scripts
+			// This helps create some meaningful clustering
+			let hash;
+			if (isCJK) {
+				// Use the second half of the vector for CJK characters
+				hash = 100 + (this.simpleHash(token) % 100);
+			} else {
+				// Use the first half for Latin script
+				hash = this.simpleHash(token) % 100;
+			}
+
+			vector[hash] += tokenFreq[token];
 		}
-		
+
+		// For better cross-language detection, add some overlap between scripts
+		// by calculating semantic hash overlaps
+		this.addCrossLanguageFeatures(vector, tokenFreq);
+
 		// Normalize the vector
 		const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
 		if (magnitude > 0) {
@@ -366,7 +409,7 @@ export default class ThreadOfAriadne extends Plugin {
 				vector[i] /= magnitude;
 			}
 		}
-		
+
 		return vector;
 	}
 	
@@ -379,6 +422,76 @@ export default class ThreadOfAriadne extends Plugin {
 			hash = hash & hash; // Convert to 32bit integer
 		}
 		return Math.abs(hash);
+	}
+
+	// Add cross-language features to improve similarity detection between languages
+	addCrossLanguageFeatures(vector: number[], tokenFreq: Record<string, number>): void {
+		// Common concepts that might appear across languages
+		const commonConcepts: Record<string, string[]> = {
+			// Map some common English words to equivalent Chinese characters
+			'time': ['时间', '时', '日期'],
+			'day': ['天', '日', '日子'],
+			'person': ['人', '人员', '个人'],
+			'work': ['工作', '职业', '任务'],
+			'book': ['书', '书籍'],
+			'food': ['食物', '食品', '餐'],
+			'water': ['水', '水分'],
+			'house': ['房子', '家', '住宅'],
+			'computer': ['电脑', '计算机'],
+			'friend': ['朋友', '伙伴'],
+			'family': ['家庭', '家人'],
+			'money': ['钱', '金钱', '资金'],
+			'school': ['学校', '校园'],
+			'business': ['商业', '生意', '企业'],
+			'city': ['城市', '市'],
+			'country': ['国家', '国'],
+			'world': ['世界', '全球'],
+			'health': ['健康', '保健'],
+			'history': ['历史', '史'],
+			'future': ['未来', '将来'],
+			'technology': ['技术', '科技'],
+			'science': ['科学', '学科'],
+			'art': ['艺术', '美术'],
+			'music': ['音乐', '曲'],
+			'film': ['电影', '影片'],
+			'love': ['爱', '爱情'],
+			'problem': ['问题', '难题'],
+			'solution': ['解决方案', '解决', '方案'],
+			'idea': ['想法', '主意', '概念'],
+			'information': ['信息', '资讯']
+		};
+
+		// Map of Chinese tokens to English equivalents (reverse of above)
+		const chineseToEnglish: Record<string, string[]> = {};
+		for (const [eng, zhArr] of Object.entries(commonConcepts)) {
+			for (const zh of zhArr) {
+				if (!chineseToEnglish[zh]) {
+					chineseToEnglish[zh] = [];
+				}
+				chineseToEnglish[zh].push(eng);
+			}
+		}
+
+		// For each token in the document, check if it has a cross-language equivalent
+		for (const token of Object.keys(tokenFreq)) {
+			const isChinese = /[\u4E00-\u9FFF]/.test(token);
+
+			if (isChinese && chineseToEnglish[token]) {
+				// Chinese token with English equivalents
+				for (const engEquiv of chineseToEnglish[token]) {
+					// Add some weight to the English equivalent's hash position
+					const engHash = this.simpleHash(engEquiv) % 100;
+					vector[engHash] += tokenFreq[token] * 0.5; // Add with reduced weight
+				}
+			} else if (!isChinese && commonConcepts[token]) {
+				// English token with Chinese equivalents
+				for (const zhEquiv of commonConcepts[token]) {
+					// Add some weight to the Chinese equivalent's hash position
+					const zhHash = 100 + (this.simpleHash(zhEquiv) % 100);
+					vector[zhHash] += tokenFreq[token] * 0.5; // Add with reduced weight
+				}
+			}
+		}
 	}
 	
 	async getNoteEmbedding(file: TFile): Promise<number[]> {
@@ -643,6 +756,12 @@ class ThreadOfAriadneSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'Thread of Ariadne Settings' });
 
+			// Add a note about multilingual support
+			containerEl.createEl('div', {
+				cls: 'thread-of-ariadne-info',
+				text: 'This plugin now supports multilingual note similarity, including cross-language matching between English and Chinese.'
+			});
+
 		// Embedding Model Settings Section
 		containerEl.createEl('h3', { text: 'Embedding Model' });
 
@@ -751,9 +870,15 @@ class ThreadOfAriadneSettingTab extends PluginSettingTab {
 		// Display mode information
 		containerEl.createEl('div', {
 			cls: 'setting-item-description',
-			text: this.plugin.settings.useGeminiEmbeddings 
-				? 'Using Gemini embeddings for high-quality semantic similarity.'
-				: 'Using local embedding method (less accurate but works offline).'
+			text: this.plugin.settings.useGeminiEmbeddings
+				? 'Using Gemini embeddings for high-quality semantic similarity with enhanced multilingual support.'
+				: 'Using local embedding method with basic multilingual support (works offline).'
+		});
+
+		// Add note about multilingual performance
+		containerEl.createEl('div', {
+			cls: 'setting-item-description thread-of-ariadne-multilingual-note',
+			text: 'For best results with multilingual content, especially between different writing systems like English and Chinese, enabling Gemini embeddings is strongly recommended.'
 		});
 	}
 }

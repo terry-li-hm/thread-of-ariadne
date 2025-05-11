@@ -104,3 +104,29 @@
 .thread-of-ariadne-score[data-score="low"] {
   color: var(--text-muted);
 }
+
+/* Multilingual info styling */
+.thread-of-ariadne-info {
+  background-color: var(--background-modifier-success);
+  color: var(--text-on-accent);
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+
+.thread-of-ariadne-embedding-type {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  padding-left: 4px;
+}
+
+.thread-of-ariadne-multilingual-note {
+  background-color: rgba(var(--rgb-accent), 0.1);
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 8px;
+  font-size: 0.85em;
+  border-left: 3px solid var(--color-accent);
+}
