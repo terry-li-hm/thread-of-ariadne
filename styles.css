@@ -1,8 +1,106 @@
-/*
+/* Thread of Ariadne Plugin Styles */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.thread-of-ariadne-container {
+  padding: 10px;
+}
 
-If your plugin does not need CSS, delete this file.
+.thread-of-ariadne-container h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 1.1em;
+  font-weight: 600;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 8px;
+}
 
-*/
+.thread-of-ariadne-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.thread-of-ariadne-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  transition: background-color 0.2s ease;
+}
+
+.thread-of-ariadne-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.thread-of-ariadne-link {
+  flex: 1;
+  text-decoration: none;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-of-ariadne-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.thread-of-ariadne-score {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: var(--background-primary);
+  margin-left: 8px;
+}
+
+/* Adjust view scrolling */
+.workspace-leaf-content[data-type="thread-of-ariadne-view"] .view-content {
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* Make sidebar prettier */
+.workspace-leaf-content[data-type="thread-of-ariadne-view"] {
+  padding: 0;
+}
+
+/* Empty state styling */
+.thread-of-ariadne-container p:only-child {
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 20px;
+  font-style: italic;
+}
+
+/* Mobile compatibility */
+@media (max-width: 768px) {
+  .thread-of-ariadne-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .thread-of-ariadne-score {
+    margin-left: 0;
+    margin-top: 4px;
+    align-self: flex-end;
+  }
+}
+
+/* Similarity score coloring based on percentage */
+.thread-of-ariadne-score[data-score="high"] {
+  color: var(--text-accent);
+  background-color: var(--background-primary-alt);
+}
+
+.thread-of-ariadne-score[data-score="medium"] {
+  color: var(--text-normal);
+}
+
+.thread-of-ariadne-score[data-score="low"] {
+  color: var(--text-muted);
+}

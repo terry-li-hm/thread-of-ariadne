@@ -1,94 +1,106 @@
-# Obsidian Sample Plugin
+# Thread of Ariadne
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+An Obsidian plugin that uses vector embeddings to find semantically similar notes to the one you're currently viewing. Like Ariadne's thread in the labyrinth, this plugin helps you navigate the complex connections between your notes based on meaning, not just explicit links.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+- **Semantic similarity search**: Finds notes with similar meaning, not just keyword matches
+- **Google Gemini AI integration**: Uses the powerful Gemini embedding model for high-quality similarity detection
+- **Customizable sidebar**: Shows similar notes in a dedicated sidebar view
+- **Real-time updates**: Automatically updates when switching notes
+- **Adjustable similarity threshold**: Control how closely notes must match to appear in results
+- **Embedding caching**: Stores note embeddings to improve performance during repeated searches
+- **Folder exclusion**: Exclude specific folders from similarity searches
+- **Secure API key storage**: Encrypted storage for your Gemini API key
 
-## First time developing plugins?
+## How It Works
 
-Quick starting guide for new plugin devs:
+Thread of Ariadne uses AI embedding models to transform your notes into vector representations that capture their semantic meaning. When you view a note, the plugin:
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+1. Generates an embedding vector for your current note (using either Google Gemini or a local algorithm)
+2. Compares this vector with the embeddings of other notes in your vault
+3. Calculates similarity scores using cosine similarity
+4. Displays the most similar notes in a sidebar
 
-## Releasing new releases
+The plugin offers two embedding modes:
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+- **Local Embedding**: Built-in algorithm that works offline, creating embeddings based on word frequency and hashing
+- **Gemini Embedding**: Uses Google's state-of-the-art Gemini embedding model (`gemini-embedding-exp-03-07`) for high-quality similarity detection
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## Usage
 
-## Adding your plugin to the community plugin list
+1. Open any note in your vault
+2. Click the "Thread of Ariadne" icon in the left ribbon or use the command "Find similar notes to current note"
+3. A sidebar will open showing notes with similar meaning to your current note
+4. Click on any result to navigate directly to that note
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### Using Gemini Embeddings
 
-## How to use
+To enable the Gemini AI-powered embeddings for better quality results:
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+1. Go to plugin settings
+2. Toggle on "Use Gemini Embeddings"
+3. Enter your Google Gemini API key (you can get one from [Google AI Studio](https://makersuite.google.com/app/apikey))
+4. The plugin will now use Gemini embeddings for more accurate similarity detection
 
-## Manually installing the plugin
+Note: Without enabling Gemini embeddings, the plugin will use a local embedding algorithm that works offline but provides less accurate results.
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+## Settings
 
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
+### Embedding Model Settings
+- **Use Gemini Embeddings**: Toggle to enable Google's Gemini API for high-quality embeddings
+- **Gemini API Key**: Your API key for accessing the Gemini embeddings API (securely stored)
 
-## Funding URL
+### Similarity Settings
+- **Number of Similar Notes**: Maximum number of similar notes to display (1-20)
+- **Minimum Similarity Score**: Threshold for notes to be considered similar (0-1)
 
-You can include funding URLs where people who use your plugin can financially support it.
+### Cache Settings
+- **Ignored Folders**: Folders to exclude from similarity searches
+- **Cache Expiration**: Number of days before cached embeddings expire (1-30)
+- **Clear Embedding Cache**: Button to clear all cached embeddings and force recalculation
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+## Installation
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
+### From Obsidian Community Plugins
 
-If you have multiple URLs, you can also do:
+*Coming soon*
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
+### Manual Installation
 
-## API Documentation
+1. Download `main.js`, `styles.css`, and `manifest.json` from the latest release
+2. Create a folder called `thread-of-ariadne` in your vault's `.obsidian/plugins/` directory
+3. Copy the downloaded files into this folder
+4. Enable the plugin in Obsidian's Community Plugins settings
 
-See https://github.com/obsidianmd/obsidian-api
+## Development
+
+If you want to contribute to the plugin:
+
+1. Clone this repository
+2. Run `npm install` to install dependencies
+3. Run `npm run dev` to start compilation in watch mode
+4. Make changes to the code
+5. Use `npm run build` to create a production build
+
+## Requirements
+
+- Obsidian v0.15.0 or higher
+- Internet connection (first time only, for downloading the embedding model)
+
+## Credits
+
+- Integrates with [Google Gemini API](https://ai.google.dev/gemini-api) for high-quality embeddings
+- Uses the experimental `gemini-embedding-exp-03-07` model for state-of-the-art text embeddings
+- Name inspired by the Greek myth of Theseus and the Minotaur, where Ariadne's thread helped Theseus navigate the labyrinth
+
+## Privacy & Security
+
+- Your Gemini API key is encrypted before being stored in the plugin's settings
+- Content is processed locally first, and only sent to Google's servers if Gemini embeddings are enabled
+- No data is shared with any third parties other than Google (when using Gemini embeddings)
+- You can always use the offline mode (local embeddings) if you prefer not to use external services
+
+## License
+
+MIT
